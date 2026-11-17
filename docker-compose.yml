@@ -25,6 +25,19 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+  evidence:
+    build: ./evidence
+    container_name: ${COMPOSE_PROJECT_NAME:-energy-ridge}-evidence
+    environment:
+      EVIDENCE_DATA_DIR: /evidence-data
+      EVIDENCE_DRILLS: ${EVIDENCE_DRILLS:-true}
+    volumes: ["evidence-data:/evidence-data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
+      interval: 4s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
   backend:
     build: ./backend
     container_name: ${COMPOSE_PROJECT_NAME:-energy-ridge}-backend
@@ -34,11 +47,17 @@ services:
       JWT_SECRET: ${JWT_SECRET:-energy-ridge-development-only}
       SEED_DEMO: ${SEED_DEMO:-true}
       ARTIFACT_DIR: /artifacts
+      EVIDENCE_URL: http://evidence:8010
+      EVIDENCE_TIMEOUT: ${EVIDENCE_TIMEOUT:-3}
+      EVIDENCE_DRILLS: ${EVIDENCE_DRILLS:-true}
     ports: ["${BACKEND_PORT:-19215}:8000"]
     volumes: ["analysis-artifacts:/artifacts"]
     depends_on:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
+      # The station is an independent dependency, not a startup gate: a business
+      # action is accepted while the station is down and stays pending.
+      evidence: {condition: service_started}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 4s
@@ -55,6 +74,7 @@ services:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
       backend: {condition: service_healthy}
+      evidence: {condition: service_started}
     healthcheck:
       test: ["CMD", "python", "-c", "import os,time; assert time.time()-os.path.getmtime('/tmp/heartbeat')<30"]
       interval: 5s
@@ -75,3 +95,4 @@ volumes:
   db-data:
   redis-data:
   analysis-artifacts:
+  evidence-data:
